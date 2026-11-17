@@ -1,4 +1,10 @@
-"""Strict CSV input and accountant-facing CSV output."""
+"""Чтение исходной выгрузки, проверка данных и запись CSV для бухгалтера.
+
+Преобразует текстовые суммы в копейки, даты в date, строки в модели из models.py.
+Проверяет колонки, статусы, последовательность дат и связи между записями.
+Готовый Report сохраняет в два CSV с русскими заголовками в новой папке.
+Правил распределения платежей этот модуль не содержит.
+"""
 
 import csv
 import re
@@ -10,6 +16,8 @@ from models import Contract, Dataset, InputError, Payment, Report, Work
 
 
 def parse_money(value: str) -> int:
+    """Преобразует строку рублей в целые копейки без промежуточного float."""
+
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]{1,2})?", value):
         raise ValueError(f"некорректная сумма {value!r}: нужны неотрицательные рубли и максимум 2 знака копеек")
     rubles, _, fraction = value.partition(".")
@@ -17,12 +25,16 @@ def parse_money(value: str) -> int:
 
 
 def format_money(value: int) -> str:
+    """Записывает копейки как рубли с двумя знаками, включая отрицательный баланс."""
+
     sign = "-" if value < 0 else ""
     rubles, kopecks = divmod(abs(value), 100)
     return f"{sign}{rubles}.{kopecks:02d}"
 
 
 def parse_date(value: str) -> date:
+    """Проверяет строгий формат YYYY-MM-DD и существование календарной даты."""
+
     if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
         raise ValueError(f"некорректная дата {value!r}: нужен формат YYYY-MM-DD")
     try:
@@ -36,7 +48,7 @@ def _optional_date(value: str) -> date | None:
 
 
 def _records(path: Path, model: type, optional: set[str], money: str):
-    """Yield records with their source line for precise reference errors."""
+    """Читает записи вместе с номером строки, чтобы точно указывать источник ошибки."""
     expected = set(model.__dataclass_fields__)
     with path.open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream, strict=True)
@@ -99,6 +111,8 @@ def _payment_error(payment: Payment) -> str | None:
 
 
 def load_dataset(directory: Path) -> Dataset:
+    """Загружает три CSV и проверяет данные до передачи в расчётное ядро."""
+
     contracts: dict[str, Contract] = {}
     works: dict[str, Work] = {}
     payments: dict[str, Payment] = {}
@@ -175,7 +189,7 @@ def _write_table(path: Path, columns: tuple, rows: tuple, as_of: date) -> None:
 
 
 def write_report(report: Report, directory: Path) -> None:
-    """Publish both files together as a new directory; never replace existing data."""
+    """Публикует оба CSV вместе в новой папке, не заменяя существующие данные."""
     if directory.exists():
         raise FileExistsError(f"Папка результата уже существует: {directory}. Выберите другую --output")
     directory.parent.mkdir(parents=True, exist_ok=True)

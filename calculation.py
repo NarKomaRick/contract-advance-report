@@ -1,4 +1,9 @@
-"""Pure snapshot calculations, independent of files and the command line."""
+"""Расчётное ядро отчёта, независимое от файлов и командной строки.
+
+Восстанавливает состояние работ и платежей на дату, учитывает прямую оплату,
+распределяет общие платежи и собирает итоги договоров с проверкой сохранения денег.
+Получает проверенный Dataset и возвращает Report. Все суммы в целых копейках.
+"""
 
 from collections import defaultdict
 from datetime import date
@@ -7,6 +12,8 @@ from models import Contract, ContractReport, Dataset, Payment, Report, Work, Wor
 
 
 def work_status_at(work: Work, as_of: date) -> str:
+    """Определяет статус работы на выбранную дату по датам приёмки и отмены."""
+
     if work.cancelled_at is not None and work.cancelled_at <= as_of:
         return "cancelled"
     if work.completed_at is not None and work.completed_at <= as_of:
@@ -15,7 +22,7 @@ def work_status_at(work: Work, as_of: date) -> str:
 
 
 def payment_amounts_at(payment: Payment, as_of: date) -> tuple[int, int]:
-    """Return gross outgoing and refunded amounts, with inclusive date bounds."""
+    """Возвращает перечисленную и возвращённую суммы на дату включительно."""
     if payment.created_at > as_of or payment.paid_at is None or payment.paid_at > as_of:
         return 0, 0
     refunded = payment.amount if payment.refunded_at is not None and payment.refunded_at <= as_of else 0
@@ -23,7 +30,11 @@ def payment_amounts_at(payment: Payment, as_of: date) -> tuple[int, int]:
 
 
 def allocate_proportionally(amount: int, capacities: dict[str, int]) -> tuple[dict[str, int], int]:
-    """Cap allocation at outstanding prices and use largest remainders for pennies."""
+    """Распределяет сумму в пределах остатков цен, сохраняя каждую копейку.
+
+Неделимые копейки получают работы с наибольшими дробными остатками.
+Возвращает распределение по work_id и нераспределённый аванс.
+"""
     if amount < 0 or any(value < 0 for value in capacities.values()):
         raise ValueError("Allocation amount and capacities must be nonnegative")
     total = sum(capacities.values())
@@ -42,6 +53,8 @@ def allocate_proportionally(amount: int, capacities: dict[str, int]) -> tuple[di
 
 
 def _work_reports(works: list[Work], payments: list[Payment], as_of: date) -> tuple[list[WorkReport], int]:
+    """Учитывает прямые платежи, разносит общие и формирует строки работ договора."""
+
     direct: dict[str, int] = defaultdict(int)
     general = 0
     for payment in payments:
@@ -70,6 +83,8 @@ def _work_reports(works: list[Work], payments: list[Payment], as_of: date) -> tu
 
 def _contract_report(contract: Contract, rows: list[WorkReport], payments: list[Payment],
                      advance: int, as_of: date) -> ContractReport:
+    """Собирает итоги договора и проверяет равенство оплаты сумме её распределения."""
+
     movements = [payment_amounts_at(payment, as_of) for payment in payments]
     gross = sum(outgoing for outgoing, _ in movements)
     refunded = sum(returned for _, returned in movements)
@@ -101,7 +116,7 @@ def _contract_report(contract: Contract, rows: list[WorkReport], payments: list[
 
 
 def build_report(data: Dataset, as_of: date) -> Report:
-    """Build a deterministic report from a validated dataset."""
+    """Строит отчёт из проверенной выгрузки с устойчивым порядком договоров и работ."""
     works_by_contract: dict[str, list[Work]] = defaultdict(list)
     payments_by_contract: dict[str, list[Payment]] = defaultdict(list)
     for work in data.works:

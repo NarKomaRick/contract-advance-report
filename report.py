@@ -1,4 +1,9 @@
-"""Command-line entry point for the advance allocation report."""
+"""Точка входа программы для запуска из командной строки.
+
+Принимает --data-dir, --date и --output, вызывает загрузку CSV, расчёт и сохранение.
+Печатает сводку или понятную ошибку и возвращает код завершения.
+Правила распределения денег находятся в calculation.py, работа с CSV в csv_io.py.
+"""
 
 import argparse
 import sys
@@ -9,6 +14,8 @@ from csv_io import format_money, load_dataset, parse_date, write_report
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Запускает подготовку отчёта; список argv позволяет отдельно проверять CLI."""
+
     parser = argparse.ArgumentParser(description="Отчёт об оплате работ и договоров на указанную дату")
     parser.add_argument("--data-dir", type=Path, default=Path("data"), help="Папка исходных CSV (по умолчанию data)")
     parser.add_argument("--date", required=True, help="Дата отчёта включительно, YYYY-MM-DD")
